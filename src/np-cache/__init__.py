@@ -1,44 +1,41 @@
-from collections import namedtuple, OrderedDict
-from functools import wraps
+from collections import OrderedDict, namedtuple
+from collections.abc import Iterable
+from functools import singledispatch, wraps
+from typing import Callable, Optional, TypeVar, cast
 
 import numpy as np
-from xxhash import xxh3_64
+from xxhash import xxh3_128
+
+__all__ = ["np_lru_cache"]
+
+TCallable = TypeVar("TCallable", bound=Callable)
 
 
-class HashedSeq(list):
-    __slots__ = "hashvalue"
+def np_lru_cache(
+    user_function: TCallable = None, *, maxsize: Optional[int] = 16
+) -> TCallable:
+    """Wrapper similar to functool's lru_cache, but can handle caching numpy arrays.
+    Uses xxhash to hash the raw bytes of the argument array(s) + shape information
+    to prevent collisions on arrays with identical data but different dimensions.
 
-    def __init__(self, tup):
-        self[:] = tup
-        self.hashvalue = _hasher(tup)
+    Intentionally has a smaller default maxsize than lru_cache - if you're using this
+    wrapper, you are likely trying to avoid some slow computations on large arrays.
+    There's no reason to hold onto 128 of these in memory unless you have to.
 
-    def __hash__(self):
-        return self.hashvalue
+    Does not have the thread-safety features of lru_cache.
 
+    Parameters
+    ----------
+    user_function : TCallable, optional
+    maxsize : int, optional
+        Max number of entries in the cache. None for no limit, by default 16
 
-def _hasher(tup):
-    hasher = xxh3_64()
+    Returns
+    -------
+    TCallable
+        Wrapped function. Should by mypy-compliant.
+    """
 
-    for item in tup:
-        try:
-            hasher.update(bytes(item))
-        except TypeError:
-            hasher.update(bytes(np.array(item, dtype=object)))
-
-    return hasher.intdigest()
-
-
-def hash_key(*args, **kwargs):
-    key = args
-    for kwarg in kwargs.items():
-        key += kwarg
-    return HashedSeq(key)
-
-
-_NpCacheInfo = namedtuple("NpCacheInfo", ["hits", "misses", "maxsize", "currsize"])
-
-
-def np_lru_cache(user_function=None, *, maxsize=128):
     if isinstance(maxsize, int):
         if maxsize < 0:
             maxsize = 0
@@ -104,9 +101,64 @@ def np_lru_cache(user_function=None, *, maxsize=128):
         return _np_cache_wrapper
 
     if user_function:
-        return actual_np_cache(user_function)
+        return cast(TCallable, actual_np_cache)(user_function)
 
-    return actual_np_cache
+    return cast(TCallable, actual_np_cache)
 
 
-__all__ = ["np_lru_cache"]
+class HashedSeq(list):
+    __slots__ = "hashvalue"
+
+    def __init__(self, tup):
+        self[:] = tup
+        self.hashvalue = _hasher(tup)
+
+    def __hash__(self):
+        return self.hashvalue
+
+
+def _hasher(tup):
+    hasher = xxh3_128()
+
+    for item in tup:
+        hasher.update(hashable_representation(item))
+
+    return hasher.intdigest()
+
+
+@singledispatch
+def hashable_representation(obj):
+    # this is the generic path and it may result in collisions if the
+    # repr of an object omits information, i.e. np arrays
+    return str(obj)
+
+
+@hashable_representation.register
+def _(obj: np.ndarray):
+    hasher = xxh3_128()
+    # tobytes() does not include dimension information, but we want to
+    # avoid collisions there
+    hasher.update(bytes(str(obj.shape), encoding="UTF-8"))
+    hasher.update(obj.tobytes())
+
+    return str(hasher.hexdigest())
+
+
+@hashable_representation.register
+def _(obj: str):
+    return obj
+
+
+@hashable_representation.register
+def _(obj: Iterable):
+    return b" ".join(hashable_representation(subobj) for subobj in obj)
+
+
+def hash_key(*args, **kwargs):
+    key = args
+    for kwarg in kwargs.items():
+        key += kwarg
+    return HashedSeq(key)
+
+
+_NpCacheInfo = namedtuple("NpCacheInfo", ["hits", "misses", "maxsize", "currsize"])
