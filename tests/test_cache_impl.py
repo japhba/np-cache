@@ -1,11 +1,11 @@
+import unittest
 from copy import deepcopy
 from itertools import product
 from unittest import TestCase
 
 import numpy as np
-from numpy.testing import assert_almost_equal
-
 from np_cache import cacheimpl
+from numpy.testing import assert_almost_equal
 
 
 class TestHashableRep(TestCase):
@@ -225,3 +225,7 @@ class TestNpLruCache(TestCase):
         self.assertEqual(cached_lstsq.cache_info().currsize, 1)
         # make sure our newest result kicked out the old result
         self.assertIn(out, cached_lstsq.cache.values())
+
+
+if __name__ == "__main__":
+    unittest.main()
