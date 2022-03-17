@@ -8,95 +8,6 @@ from np_cache import cacheimpl
 from numpy.testing import assert_almost_equal
 
 
-class TestHashableRep(TestCase):
-    def test_array(self):
-
-        x = np.array([1, 2, 3, 4, 5, 6])
-        y = np.array([1, 2, 3, 4, 5, 6])
-
-        x_rep = cacheimpl.hashable_representation(x)
-        y_rep = cacheimpl.hashable_representation(y)
-
-        self.assertEqual(x_rep, y_rep)
-
-    def test_array_dim(self):
-
-        x = np.array([1, 2, 3, 4, 5, 6])
-        y = np.array([1, 2, 3, 4, 5, 6]).reshape((-1, 1))
-
-        x_rep = cacheimpl.hashable_representation(x)
-        y_rep = cacheimpl.hashable_representation(y)
-
-        self.assertNotEqual(x_rep, y_rep)
-
-    def test_homogeneous_collection(self):
-
-        # as long as collections are made up of hashable components,
-        # they can be hashed
-
-        x = np.array([1, 2, 3, 4, 5, 6])
-        y = np.array([1, 2, 3, 4, 5, 6])
-
-        tup_1 = tuple((x, y))
-        tup_2 = tuple((x, x))
-
-        x_rep = cacheimpl.hashable_representation(tup_1)
-        y_rep = cacheimpl.hashable_representation(tup_2)
-
-        self.assertEqual(x_rep, y_rep)
-
-        list_1 = [x, y]
-        list_2 = [x, x]
-
-        x_rep = cacheimpl.hashable_representation(list_1)
-        y_rep = cacheimpl.hashable_representation(list_2)
-
-        self.assertEqual(x_rep, y_rep)
-
-        # changing the components of the collection should result
-        # in a different hash key
-
-        x = np.array([1, 2, 3, 4, 5, 6])
-        y = np.array([1, 2, 3, 4, 5, 6]).reshape((-1, 1))
-
-        tup_1 = tuple((x, y))
-        tup_2 = tuple((x, x))
-
-        x_rep = cacheimpl.hashable_representation(tup_1)
-        y_rep = cacheimpl.hashable_representation(tup_2)
-
-        self.assertNotEqual(x_rep, y_rep)
-
-        list_1 = [x, y]
-        list_2 = [x, x]
-
-        x_rep = cacheimpl.hashable_representation(list_1)
-        y_rep = cacheimpl.hashable_representation(list_2)
-
-        self.assertNotEqual(x_rep, y_rep)
-
-    def test_heterogeneous_collection(self):
-
-        x = np.array([1, 2, 3, 4, 5, 6])
-        y = np.array([1, 2, 3, 4, 5, 6])
-
-        tup_1 = tuple((x, y, "hello", 123, 3.14, 9999999999999))
-        tup_2 = tuple((x, x, "hello", 123, 3.14, 9999999999999))
-
-        x_rep = cacheimpl.hashable_representation(tup_1)
-        y_rep = cacheimpl.hashable_representation(tup_2)
-
-        self.assertEqual(x_rep, y_rep)
-
-        list_1 = [x, y]
-        list_2 = [x, x]
-
-        x_rep = cacheimpl.hashable_representation(list_1)
-        y_rep = cacheimpl.hashable_representation(list_2)
-
-        self.assertEqual(x_rep, y_rep)
-
-
 class TestMakeHashKey(TestCase):
     def test_make_hash_key(self):
         """Test several combinations of args and kwargs and check that
@@ -119,7 +30,7 @@ class TestMakeHashKey(TestCase):
             {"a": 2},
             {"key": 3.14, "arr": np.array([2, 5.55, "1"])},
             {},
-            {"a": "a", "b": "b", "c": list(list(list(np.array([1, 1]))))},
+            {"a": "a", "b": "b", "c": np.array([1, 1])},
         )
 
         for args, kwargs in product(test_args, test_kwargs):

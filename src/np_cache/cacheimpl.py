@@ -1,10 +1,10 @@
 from collections import OrderedDict, namedtuple
-from collections.abc import Iterable
-from functools import singledispatch, wraps
+from functools import wraps
+from itertools import chain
 from typing import Callable, Optional, TypeVar, cast
 
 import numpy as np
-from xxhash import xxh3_128
+from xxhash import xxh64_hexdigest
 
 __all__ = ["np_lru_cache"]
 
@@ -45,6 +45,15 @@ def np_lru_cache(
     was discarded for performance upgrades. Generating a hash is by far the
     slowest step of this wrapper, however, so optimizing getting and setting
     the cache is not really going to yield much benefit.
+
+    Does NOT look inside of collections to generate a hash for a number of
+    performance-related reasons. For example, this function can be cached:
+
+    >>> fun(np.array([1, 2, 3]), 3, kind="type")
+
+    This one cannot:
+
+    >>> fun(arrays = [np.array([1, 2, 3]), np.array([4, 5, 6])])
 
     """
 
@@ -125,11 +134,22 @@ def np_lru_cache(
 
 def _make_hash_key(*args, **kwargs):
     """This approach cares about the order of keyword arguments (that is,
-    f(arr=a, order="c") will be cached separately from f(order="c", arr=a)"""
-    key = args
-    for kwarg in kwargs.items():
-        key += kwarg
+    f(arr=a, order="c") will be cached separately from f(order="c", arr=a)
+
+    This is much slower than the equivalent function in functools.lru_cache
+    because every element must be inspected to determine if is an array.
+    Monkeypatching np.ndarray.__hash__ is unfortunately not possible, but
+    would fix this issue."""
+    key = tuple(map(hash_array, args))
+    if kwargs:
+        key += tuple(map(hash_array, chain.from_iterable(kwargs.items())))
     return _HashedArrSeq(key)
+
+
+def hash_array(x):
+    if not type(x) is np.ndarray:
+        return x
+    return x.shape, xxh64_hexdigest(x)
 
 
 class _HashedArrSeq(list):
@@ -140,56 +160,8 @@ class _HashedArrSeq(list):
     __slots__ = "hashvalue"
 
     def __init__(self, tup):
-        self.hashvalue = _hasher(tup)
+        self.hashvalue = hash(tup)
         self[:] = [self.hashvalue]
 
     def __hash__(self):
         return self.hashvalue
-
-
-def _hasher(tup):
-    hasher = xxh3_128()
-
-    for item in tup:
-        hasher.update(hashable_representation(item))
-
-    return hasher.intdigest()
-
-
-@singledispatch
-def hashable_representation(obj):
-    """Converts arguments into a hashable representation.
-
-    xxhash can only hash string-like objects, so everything must be
-    converted. Conversion happens as follows:
-
-    strings : left as is
-    np.ndarrays : xxh3_128 is updated with the array's shape and bytestring,
-    which hashed to a hex representation
-    other objects : str(object)
-    other Iterables : recursively hashed based on above rules
-    """
-    # this is the generic path and it may result in collisions if the
-    # repr of an object omits information, i.e. np arrays
-    return str(obj)
-
-
-@hashable_representation.register
-def _(obj: np.ndarray):
-    hasher = xxh3_128()
-    # tobytes() does not include dimension information, but we want to
-    # avoid collisions there
-    hasher.update(bytes(str(obj.shape), encoding="UTF-8"))
-    hasher.update(obj.tobytes())
-
-    return str(hasher.hexdigest())
-
-
-@hashable_representation.register
-def _(obj: str):
-    return obj
-
-
-@hashable_representation.register
-def _(obj: Iterable):
-    return " ".join(hashable_representation(subobj) for subobj in obj)
