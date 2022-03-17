@@ -140,8 +140,8 @@ class _HashedArrSeq(list):
     __slots__ = "hashvalue"
 
     def __init__(self, tup):
-        self[:] = tup
         self.hashvalue = _hasher(tup)
+        self[:] = [self.hashvalue]
 
     def __hash__(self):
         return self.hashvalue
