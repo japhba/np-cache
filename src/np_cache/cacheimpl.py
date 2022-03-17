@@ -59,7 +59,7 @@ def np_lru_cache(
         cache = OrderedDict()
         hits = misses = 0
         cache_len = cache.__len__
-        cache_del = cache.pop
+        cache_del = cache.popitem
         cache_move_to_end = cache.move_to_end
         full = False
 
@@ -94,7 +94,7 @@ def np_lru_cache(
                     misses += 1
                     cache[key] = user_function(*args, **kwargs)
                     if full:
-                        cache_del(0)
+                        cache_del(last=False)
                     else:
                         full = cache_len() >= maxsize
                 else:
