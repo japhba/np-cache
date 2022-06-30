@@ -4,7 +4,7 @@ from itertools import chain
 from typing import Callable, Optional, TypeVar, cast
 
 import numpy as np
-from xxhash import xxh64_hexdigest
+from xxhash import xxh3_64_hexdigest
 
 __all__ = ["np_lru_cache"]
 
@@ -132,6 +132,13 @@ def np_lru_cache(
     return cast(TCallable, actual_np_cache)
 
 
+HASH_FUNCTIONS = {np.ndarray: xxh3_64_hexdigest}
+
+
+def _hasher(obj):
+    return HASH_FUNCTIONS.get(type(obj), hash)(obj)
+
+
 def _make_hash_key(*args, **kwargs):
     """This approach cares about the order of keyword arguments (that is,
     f(arr=a, order="c") will be cached separately from f(order="c", arr=a)
@@ -140,16 +147,10 @@ def _make_hash_key(*args, **kwargs):
     because every element must be inspected to determine if is an array.
     Monkeypatching np.ndarray.__hash__ is unfortunately not possible, but
     would fix this issue."""
-    key = tuple(map(hash_array, args))
+    key = tuple(map(_hasher, args))
     if kwargs:
-        key += tuple(map(hash_array, chain.from_iterable(kwargs.items())))
+        key += tuple(map(_hasher, chain.from_iterable(kwargs.items())))
     return _HashedArrSeq(key)
-
-
-def hash_array(x):
-    if not type(x) is np.ndarray:
-        return x
-    return x.shape, xxh64_hexdigest(x)
 
 
 class _HashedArrSeq(list):
