@@ -12,10 +12,14 @@ TCallable = TypeVar("TCallable", bound=Callable)
 
 _NpCacheInfo = namedtuple("NpCacheInfo", ["hits", "misses", "maxsize", "currsize"])
 
+HASH_FUNCTIONS = {np.ndarray: xxh3_64_hexdigest}
 
 def np_lru_cache(
-    user_function: TCallable = None, *, maxsize: Optional[int] = 16
-) -> TCallable:
+        user_function: TCallable = None, *, maxsize: Optional[int] = 16, hashfn: Optional[Callable] = None
+    ) -> TCallable:
+       
+
+
     """Wrapper similar to functool's lru_cache, but can handle caching numpy arrays.
     Uses xxhash to hash the raw bytes of the argument array(s) + shape information
     to prevent collisions on arrays with identical data but different dimensions.
@@ -57,6 +61,10 @@ def np_lru_cache(
 
     """
 
+    global HASH_FUNCTIONS
+    if hashfn is not None:
+        HASH_FUNCTIONS[np.ndarray] = hashfn
+    
     if isinstance(maxsize, int):
         if maxsize < 0:
             maxsize = 0
@@ -132,11 +140,11 @@ def np_lru_cache(
     return cast(TCallable, actual_np_cache)
 
 
-HASH_FUNCTIONS = {np.ndarray: xxh3_64_hexdigest}
-
 
 def _hasher(obj):
-    return HASH_FUNCTIONS.get(type(obj), hash)(obj)
+    arr_hash = HASH_FUNCTIONS.get(type(obj), hash)(obj)
+    # print(obj, arr_hash)
+    return arr_hash
 
 
 def _make_hash_key(*args, **kwargs):
