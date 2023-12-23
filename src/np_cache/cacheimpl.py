@@ -14,8 +14,10 @@ _NpCacheInfo = namedtuple("NpCacheInfo", ["hits", "misses", "maxsize", "currsize
 
 HASH_FUNCTIONS = {np.ndarray: xxh3_64_hexdigest}
 
+
+
 def np_lru_cache(
-        user_function: TCallable = None, *, maxsize: Optional[int] = 16, hashfn: Optional[Callable] = None
+        user_function: TCallable = None, *, maxsize: Optional[int] = 16, hashfn: Optional[Callable] = None, verbose=0,
     ) -> TCallable:
        
 
@@ -64,7 +66,8 @@ def np_lru_cache(
     global HASH_FUNCTIONS
     if hashfn is not None:
         HASH_FUNCTIONS[np.ndarray] = hashfn
-    
+
+ 
     if isinstance(maxsize, int):
         if maxsize < 0:
             maxsize = 0
@@ -80,6 +83,10 @@ def np_lru_cache(
         cache_move_to_end = cache.move_to_end
         full = False
 
+        miss_notify: lambda args, kwargs: print(f"Cache missed, executing function for with args {args} and kwargs {kwargs}") if verbose else None
+        hit_notify: lambda args, kwargs: print(f"Cache hit, returning cached value for with args {args} and kwargs {kwargs}") if verbose else None
+    
+
         if maxsize is None:
 
             @wraps(user_function)
@@ -88,9 +95,11 @@ def np_lru_cache(
                 key = _make_hash_key(*args, **kwargs)
                 if key not in cache:
                     misses += 1
+                    # miss_notify(args, kwargs)
                     cache[key] = user_function(*args, **kwargs)
                 else:
                     hits += 1
+                    # hit_notify(args, kwargs)
                 return cache[key]
 
         elif maxsize == 0:
@@ -99,6 +108,7 @@ def np_lru_cache(
             def _np_cache_wrapper(*args, **kwargs):
                 nonlocal misses
                 misses += 1
+                # miss_notify(args, kwargs)
                 return user_function(*args, **kwargs)
 
         else:
@@ -109,6 +119,7 @@ def np_lru_cache(
                 key = _make_hash_key(*args, **kwargs)
                 if key not in cache:
                     misses += 1
+                    # miss_notify(args, kwargs)
                     cache[key] = user_function(*args, **kwargs)
                     if full:
                         cache_del(last=False)
@@ -116,6 +127,7 @@ def np_lru_cache(
                         full = cache_len() >= maxsize
                 else:
                     hits += 1
+                    # hit_notify(args, kwargs)
                     cache_move_to_end(key)
                 return cache[key]
 
@@ -128,9 +140,15 @@ def np_lru_cache(
             hits = misses = 0
             full = False
 
+        def hits_cache(*args, **kwargs):
+            key = _make_hash_key(*args, **kwargs)
+            return key in cache
+
+
         _np_cache_wrapper.cache_info = cache_info
         _np_cache_wrapper.cache_clear = cache_clear
         _np_cache_wrapper.cache = cache
+        _np_cache_wrapper.hits_cache = hits_cache
 
         return _np_cache_wrapper
 
